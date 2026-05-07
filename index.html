@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI GitHub Analyzer</title>
+
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+
+<!-- PDF LIB -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
+<style>
+:root{
+--bg:#020617;
+--panel:#0a192f;
+--accent:#2563eb;
+--text:#e6edf3;
+--sub:#94a3b8;
+--border:#1e293b;
+}
+
+*{
+margin:0;
+padding:0;
+box-sizing:border-box;
+font-family:'Inter',sans-serif;
+}
+
+body{
+background: radial-gradient(circle at top,#0a1f44,#020617);
+color:var(--text);
+height:100vh;
+}
+
+/* FULL SCREEN */
+.app{
+width:100%;
+height:100vh;
+display:grid;
+grid-template-columns:260px 1fr;
+}
+
+/* MOBILE */
+@media(max-width:768px){
+.app{
+grid-template-columns:1fr;
+}
+.sidebar{
+border-bottom:1px solid var(--border);
+}
+.stats{
+grid-template-columns:repeat(2,1fr);
+}
+}
+
+.sidebar{
+padding:25px;
+background:var(--panel);
+border-right:1px solid var(--border);
+display:flex;
+flex-direction:column;
+gap:15px;
+}
+
+.sidebar h3{
+color:#3b82f6;
+}
+
+.main{
+padding:25px;
+overflow-y:auto;
+}
+
+/* INPUT */
+input{
+width:100%;
+padding:12px;
+margin-bottom:12px;
+border-radius:8px;
+border:1px solid var(--border);
+background:#020617;
+color:white;
+}
+
+/* BUTTON */
+button{
+padding:10px;
+border-radius:8px;
+border:none;
+cursor:pointer;
+margin-bottom:10px;
+}
+
+.primary{
+background:var(--accent);
+color:white;
+}
+
+/* SECTIONS */
+.section{
+margin-top:18px;
+padding:15px;
+background:#020617;
+border:1px solid var(--border);
+border-radius:10px;
+}
+
+/* STATS */
+.stats{
+display:grid;
+grid-template-columns:repeat(4,1fr);
+gap:10px;
+margin-top:15px;
+}
+
+.card{
+padding:12px;
+border:1px solid var(--border);
+border-radius:8px;
+text-align:center;
+}
+
+.card h4{
+font-size:11px;
+color:var(--sub);
+}
+
+.card p{
+color:#3b82f6;
+}
+
+/* CHART */
+img{
+margin-top:15px;
+max-width:200px;
+width:100%;
+}
+
+ul{
+padding-left:18px;
+}
+</style>
+</head>
+
+<body>
+
+<div class="app">
+
+<!-- SIDEBAR -->
+<div class="sidebar">
+<h3>⚡Github Analyzer</h3>
+<button class="primary" onclick="analyze()">🚀 Analyze</button>
+<button onclick="downloadPDF()">📄 Download PDF</button>
+</div>
+
+<!-- MAIN -->
+<div class="main" id="content">
+
+<input id="repo_url" placeholder="🔗 GitHub URL">
+
+<div id="error" style="color:red;"></div>
+<div id="result"></div>
+
+<div class="section">
+<b>💬 Ask Repo</b><br><br>
+<input id="question">
+<button onclick="ask()">Ask</button>
+<div id="answer"></div>
+</div>
+
+<div class="section">
+<b>🔎 Search Code</b><br><br>
+<input id="search_query">
+<button onclick="searchCode()">Search</button>
+<div id="search_results"></div>
+</div>
+
+</div>
+</div>
+
+<script>
+
+// ANALYZE
+async function analyze(){
+const repo=document.getElementById("repo_url").value;
+const result=document.getElementById("result");
+const error=document.getElementById("error");
+
+result.innerHTML="⏳ Loading...";
+error.innerText="";
+
+try{
+const form=new FormData();
+form.append("repo_url",repo);
+
+const res=await fetch("/analyze",{method:"POST",body:form});
+const data=await res.json();
+
+if(data.error){
+error.innerText=data.error;
+return;
+}
+
+result.innerHTML=`
+
+<div class="stats">
+<div class="card"><h4>⚙️ Framework</h4><p>${data.framework||'N/A'}</p></div>
+<div class="card"><h4>📦 Type</h4><p>${data.project_type||'N/A'}</p></div>
+<div class="card"><h4>⭐ Score</h4><p>${data.score||'N/A'}</p></div>
+<div class="card"><h4>❤️ Health</h4><p>${data.health||'N/A'}</p></div>
+</div>
+
+<div class="section">
+<b>📊 Repo Stats</b><br><br>
+Files: ${data.repo_stats?.total_files||'N/A'}<br>
+Folders: ${data.repo_stats?.total_folders||'N/A'}<br>
+Lines: ${data.repo_stats?.total_lines||'N/A'}
+</div>
+
+${data.github_stats?`
+<div class="section">
+<b>🌐 GitHub Stats</b><br><br>
+⭐ Stars: ${data.github_stats.stars||0}<br>
+🍴 Forks: ${data.github_stats.forks||0}<br>
+🐞 Issues: ${data.github_stats.issues||0}
+</div>`:""}
+
+${data.insights?.length?`
+<div class="section">
+<b>💡 Insights</b>
+<ul>${data.insights.map(i=>`<li>${i}</li>`).join("")}</ul>
+</div>`:""}
+
+<div class="section">
+<b>🧠 Summary</b><br><br>
+${data.summary||'No summary'}
+</div>
+
+${data.language_chart?`<img src="/charts/${data.language_chart}">`:""}
+`;
+
+}catch{
+error.innerText="Server error";
+}
+}
+
+// ASK
+async function ask(){
+const repo=document.getElementById("repo_url").value;
+const q=document.getElementById("question").value;
+
+const form=new FormData();
+form.append("repo_url",repo);
+form.append("question",q);
+
+const res=await fetch("/ask",{method:"POST",body:form});
+const data=await res.json();
+
+document.getElementById("answer").innerText=data.answer||"No response";
+}
+
+// SEARCH
+async function searchCode(){
+const repo=document.getElementById("repo_url").value;
+const q=document.getElementById("search_query").value;
+
+const form=new FormData();
+form.append("repo_url",repo);
+form.append("query",q);
+
+const res=await fetch("/search",{method:"POST",body:form});
+const data=await res.json();
+
+let html="";
+
+if(data.results?.length){
+data.results.forEach(r=>{
+html+=`<div>${r.file} → ${r.code||r.snippet||""}</div>`;
+});
+}else{
+html="No results";
+}
+
+document.getElementById("search_results").innerHTML=html;
+}
+
+// PDF DOWNLOAD
+function downloadPDF(){
+const element=document.getElementById("content");
+html2pdf().from(element).save("repo-analysis.pdf");
+}
+
+</script>
+
+</body>
+</html>
